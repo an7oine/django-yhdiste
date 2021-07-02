@@ -3,7 +3,7 @@
 import functools
 import inspect
 
-from django.http import HttpResponseNotAllowed
+from django.http import HttpResponseForbidden, HttpResponseNotAllowed
 
 
 class luokkavalimuisti:
@@ -31,6 +31,26 @@ class Yhdiste:
   määritellyn toimintometodin HTTP-metodin (GET, POST, jne.) ja
   HTTP-pyynnöllä annettujen GET-parametrien (`?...`) perusteella.
   '''
+
+  @classmethod
+  def oikeus_vaaditaan(cls, oikeus):
+    '''
+    Vaadi annettu Django-oikeustaso toiminnon käyttöön; esim.
+
+    @Yhdiste.toiminto
+    @Yhdiste.oikeus_vaaditaan('auth.view_user')
+    def toiminto(self, request, **kwargs):
+      ...
+    '''
+    def _oikeus_vaaditaan(metodi):
+      @functools.wraps(metodi)
+      def _metodi(self, request, *args, **kwargs):
+        if not request.user.has_perm(oikeus):
+          return HttpResponseForbidden()
+        return _metodi.__wrapped__(self, request, *args, **kwargs)
+      return _metodi
+    return _oikeus_vaaditaan
+    # def oikeus_vaaditaan
 
   @classmethod
   def toiminto(
