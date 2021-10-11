@@ -3,7 +3,11 @@
 import functools
 import inspect
 
-from django.http import HttpResponseForbidden, HttpResponseNotAllowed
+from django.http import (
+  HttpResponseBadRequest,
+  HttpResponseForbidden,
+  HttpResponseNotAllowed,
+)
 
 
 class luokkavalimuisti:
@@ -51,6 +55,32 @@ class Yhdiste:
       return _metodi
     return _oikeus_vaaditaan
     # def oikeus_vaaditaan
+
+  @classmethod
+  def kohdekohtainen(cls, parametri='pk', hae_kohde='hae_kohde'):
+    '''
+    Hae ja aseta `self.object` ennen metodin suoritusta; esim.
+
+    def hae_kohde(self, *, pk):
+      return self.malli.objects.filter(...).get(pk=pk)
+    ...
+    @Yhdiste.toiminto
+    @Yhdiste.kohdekohtainen
+    def toiminto(self, request, *, pk, **kwargs):
+      print(self.object)
+      ...
+    '''
+    def _kohdekohtainen(metodi):
+      @functools.wraps(metodi)
+      def _metodi(self, request, *args, **kwargs):
+        pk = kwargs.get(parametri)
+        if not pk:
+          return HttpResponseBadRequest()
+        self.object = getattr(self, hae_kohde)(**{parametri: pk})
+        return _metodi.__wrapped__(self, request, *args, **kwargs)
+      return _metodi
+    return _kohdekohtainen
+    # def kohdekohtainen
 
   @classmethod
   def toiminto(
@@ -108,23 +138,6 @@ class Yhdiste:
       else:
         # Poimi allekirjoitus oletuksena metodin tiedoista.
         _allekirjoitus = inspect.signature(metodi)
-
-      # Lisää automaattisesti `self.object`-haku, mikäli
-      # 1. `pk` esiintyy toiminnolle määritetyissä parametreissä ja
-      # 2. `pk` on annettu pyynnön GET-parametreissä.
-      if 'pk' in (
-        nimi
-        for nimi, param in _allekirjoitus.parameters.items()
-        if param.kind == param.KEYWORD_ONLY
-      ):
-        def rivihaku(self, request, **kwargs):
-          if kwargs.get('pk'):
-            self.object = self.hae_kohde(pk=kwargs['pk'])
-          # pylint: disable=no-member
-          return rivihaku.__wrapped__(self, request, **kwargs)
-          # def rivihaku
-        metodi = functools.wraps(metodi)(rivihaku)
-        # if 'pk'
 
       metodi.__dict__.setdefault(
         'toiminnot', []
